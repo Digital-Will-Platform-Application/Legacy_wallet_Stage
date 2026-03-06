@@ -210,42 +210,26 @@ const CreateChatWill = () => {
         })
         .join("\n\n");
 
-      // Check for existing chat will
-      const { data: existingWill } = await supabase
-        .from("wills")
-        .select("id")
-        .eq("user_id", user.id)
-        .eq("type", "chat")
-        .maybeSingle();
-
-      if (existingWill) {
-        const { error } = await supabase
-          .from("wills")
-          .update({
-            transcript,
-            content: transcript,
-            status: "in_progress",
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", existingWill.id);
-        if (error) throw error;
-      } else {
-        const { error } = await supabase.from("wills").insert({
-          user_id: user.id,
-          type: "chat",
-          title: "My Chat-Based Will",
-          transcript,
-          content: transcript,
-          status: "in_progress",
-        });
-        if (error) throw error;
+      // Save will using backend API
+      // Pass user email - backend will auto-create user if needed
+      const { backendApi } = await import("@/lib/backendApi");
+      const result = await backendApi.saveWill({
+        user_email: user.email, // Backend will auto-create user if not exists
+        transcript,
+        content: transcript,
+        title: "My Chat-Based Will",
+        type: "chat"
+      });
+      
+      if (!result.success) {
+        throw new Error(result.message || "Failed to save will");
       }
 
       toast.success("Conversation saved successfully");
       navigate("/assets?flow=true");
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error saving will:", error);
-      toast.error("Failed to save will");
+      toast.error(error.message || "Failed to save will");
     } finally {
       setIsSaving(false);
     }

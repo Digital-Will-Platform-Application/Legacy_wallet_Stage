@@ -12,7 +12,17 @@ export default {
     ios: { supportsTablet: true },
     android: { adaptiveIcon: { foregroundImage: './assets/images/adaptive-icon.png', backgroundColor: '#FAF9F7' }, edgeToEdgeEnabled: true },
     web: { bundler: 'metro', output: 'static', favicon: './assets/images/favicon.png' },
-    plugins: ['expo-router'],
+    plugins: [
+      'expo-router',
+      [
+        'expo-notifications',
+        {
+          icon: './assets/images/icon.png',
+          color: '#ffffff',
+          sounds: [],
+        },
+      ],
+    ],
     experiments: { typedRoutes: true },
     extra: {
       supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL,

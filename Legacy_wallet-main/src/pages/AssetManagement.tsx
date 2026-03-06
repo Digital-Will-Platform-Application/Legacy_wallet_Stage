@@ -215,27 +215,25 @@ const AssetManagement = () => {
 
     setSaving(true);
     try {
-      const { data, error } = await supabase
-        .from("assets")
-        .insert({
-          user_id: user.id,
-          name: nameValidation.sanitized,
-          category: newAsset.category,
-          estimated_value: estimatedValue,
-          description: descriptionValue,
-        })
-        .select()
-        .single();
+      // Use backend API to add asset
+      const { backendApi } = await import("@/lib/backendApi");
+      const result = await backendApi.addAsset({
+        user_email: user.email, // Use email to look up backend user ID
+        name: nameValidation.sanitized,
+        category: newAsset.category,
+        estimated_value: estimatedValue,
+        description: descriptionValue,
+      });
 
-      if (error) throw error;
-
-      setAssets([{ ...data, allocations: [] }, ...assets]);
-      setNewAsset({ name: "", category: "property", estimated_value: "", description: "" });
-      setShowAddModal(false);
-      toast.success("Asset added successfully");
-    } catch (error) {
+      if (result.success && result.data) {
+        setAssets([{ ...result.data, allocations: [] }, ...assets]);
+        setNewAsset({ name: "", category: "property", estimated_value: "", description: "" });
+        setShowAddModal(false);
+        toast.success("Asset added successfully");
+      }
+    } catch (error: any) {
       console.error("Error adding asset:", error);
-      toast.error("Failed to add asset");
+      toast.error(error.message || "Failed to add asset");
     } finally {
       setSaving(false);
     }

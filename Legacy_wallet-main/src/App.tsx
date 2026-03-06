@@ -31,6 +31,7 @@ import Login from "./pages/Login";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 import VerifyRecipient from "./pages/VerifyRecipient";
+import VerifyEmail from "./pages/VerifyEmail";
 import NotFound from "./pages/NotFound";
 import AdminLayout, { AdminDashboardContent } from "./pages/AdminDashboard";
 import AdminAccount from "./pages/AdminAccount";
@@ -61,6 +62,7 @@ const App = () => (
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/verify-recipient" element={<VerifyRecipient />} />
+            <Route path="/verify-email" element={<VerifyEmail />} />
             <Route element={<ProtectedRoute><UserLayout /></ProtectedRoute>}>
               <Route path="onboarding" element={<OnboardingAssetSelection />} />
               <Route path="dashboard" element={<Dashboard />} />

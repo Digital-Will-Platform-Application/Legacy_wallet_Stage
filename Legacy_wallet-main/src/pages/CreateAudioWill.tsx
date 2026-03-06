@@ -161,70 +161,26 @@ const CreateAudioWill = () => {
         throw new Error("Recording failed - no audio data captured");
       }
 
-      // Upload audio to storage
-      const fileName = `${user.id}/audio-will-${Date.now()}.webm`;
-      console.log("Uploading to:", fileName);
+      // Upload audio to Cloudflare R2 storage
+      if (!user?.email) {
+        throw new Error("User email is required. Please log in again.");
+      }
+
+      console.log("Uploading audio to Cloudflare R2...", { userEmail: user.email, blobSize: audioBlob.size });
       
-      const { error: uploadError } = await supabase.storage
-        .from("asset-documents")
-        .upload(fileName, audioBlob, {
-          contentType: "audio/webm",
-          upsert: false,
-        });
+      const { backendApi } = await import("@/lib/backendApi");
+      const uploadResult = await backendApi.uploadAudio({
+        user_email: user.email,
+        audioFile: audioBlob,
+        staging: true // Use staging bucket in development
+      });
 
-      if (uploadError) {
-        console.error("Upload error:", uploadError);
-        throw new Error(`Upload failed: ${uploadError.message}`);
+      if (!uploadResult.success) {
+        throw new Error(uploadResult.message || "Failed to upload audio to R2");
       }
 
-      console.log("Upload successful, updating database...");
-
-      // Get existing will or create new one
-      const { data: existingWill, error: fetchError } = await supabase
-        .from("wills")
-        .select("id")
-        .eq("user_id", user.id)
-        .eq("status", "draft")
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (fetchError) {
-        console.error("Error fetching existing will:", fetchError);
-      }
-
-      if (existingWill) {
-        console.log("Updating existing will:", existingWill.id);
-        // Update existing will
-        const { error } = await supabase
-          .from("wills")
-          .update({
-            audio_url: fileName,
-            type: "audio",
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", existingWill.id);
-
-        if (error) {
-          console.error("Update error:", error);
-          throw new Error(`Failed to update will: ${error.message}`);
-        }
-      } else {
-        console.log("Creating new will...");
-        // Create new will
-        const { error } = await supabase.from("wills").insert({
-          user_id: user.id,
-          audio_url: fileName,
-          type: "audio",
-          title: "My Audio Will",
-          status: "draft",
-        });
-
-        if (error) {
-          console.error("Insert error:", error);
-          throw new Error(`Failed to create will: ${error.message}`);
-        }
-      }
+      console.log("Upload successful to R2:", uploadResult.data?.upload?.url);
+      toast.success("Audio saved successfully to Cloudflare R2!");
 
       console.log("Save completed successfully!");
       setIsSaved(true);

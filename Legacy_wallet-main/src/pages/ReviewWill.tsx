@@ -197,46 +197,64 @@ const ReviewWill = () => {
 
     setIsSubmitting(true);
     try {
-      // Update will status to completed
-      const { error } = await supabase
-        .from("wills")
-        .update({ status: "completed" })
-        .eq("id", will.id);
+      // Use backend API to finalize will
+      const { backendApi } = await import("@/lib/backendApi");
+      
+      // Finalize will - backend will find the most recent will for this user
+      // We don't need to pass will_id since backend will get the latest one
+      // But if we have will.id, we can try to pass it (backend will handle UUID to integer conversion)
+      const finalizeResult = await backendApi.finalizeWill({
+        user_email: user.email, // Backend will auto-create user if needed
+        will_id: will?.id ? parseInt(will.id) || undefined : undefined, // Try to convert UUID to int, or let backend find it
+        recipients: recipients.map(r => ({
+          email: r.email || '',
+          name: r.full_name,
+          full_name: r.full_name
+        })).filter(r => r.email)
+      });
 
-      if (error) throw error;
+      if (!finalizeResult.success) {
+        throw new Error(finalizeResult.message || "Failed to finalize will");
+      }
 
       // Send email notifications to recipients
       try {
-        const { data, error: notifyError } = await supabase.functions.invoke("notify-recipients", {
-          body: {
-            willId: will.id,
-            userId: user.id,
-          },
-        });
+        // Use the will ID from the finalize result (backend integer ID)
+        const willIdForNotification = finalizeResult.data?.id;
+        
+        if (willIdForNotification && recipients.length > 0) {
+          const notifyResult = await backendApi.sendWillNotifications({
+            user_email: user.email,
+            will_id: willIdForNotification,
+            recipients: recipients.map(r => ({
+              email: r.email || '',
+              name: r.full_name,
+              full_name: r.full_name
+            })).filter(r => r.email)
+          });
 
-        if (notifyError) {
-          console.error("Error sending notifications:", notifyError);
-          // Don't block navigation if email sending fails
-          toast.warning("Will finalized, but some email notifications may not have been sent");
-        } else if (data) {
-          if (data.sent > 0) {
-            toast.success(`Will finalized! Notifications sent to ${data.sent} recipient(s)`);
-          } else if (data.total === 0) {
-            toast.success("Will finalized! No recipients with email addresses found");
-          } else {
-            toast.warning("Will finalized, but email notifications failed to send");
+          if (notifyResult.success && notifyResult.data) {
+            if (notifyResult.data.sent > 0) {
+              toast.success(`Will finalized! Notifications sent to ${notifyResult.data.sent} recipient(s)`);
+            } else if (notifyResult.data.total === 0) {
+              toast.success("Will finalized! No recipients with email addresses found");
+            } else {
+              toast.warning("Will finalized, but email notifications failed to send");
+            }
           }
+        } else if (recipients.length === 0) {
+          toast.success("Will finalized successfully!");
         }
-      } catch (notifyErr) {
-        console.error("Error calling notification function:", notifyErr);
+      } catch (notifyErr: any) {
+        console.error("Error sending notifications:", notifyErr);
         // Don't block navigation if email sending fails
         toast.warning("Will finalized, but email notifications could not be sent");
       }
 
       navigate("/confirmation");
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error finalizing will:", error);
-      toast.error("Failed to finalize will");
+      toast.error(error.message || "Failed to finalize will");
     } finally {
       setIsSubmitting(false);
     }

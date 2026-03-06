@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, TextInput, ActivityIndicator, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/hooks/useAuth';
-import { supabase } from '@/lib/supabase';
+import { backendApi } from '@/lib/backendApi';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, typography, radius } from '@/lib/theme';
@@ -24,23 +24,33 @@ export default function AddRecipientScreen() {
       Alert.alert('Required', 'Please enter full name.');
       return;
     }
-    if (!user) return;
-    setLoading(true);
-    const { error } = await supabase.from('recipients').insert({
-      user_id: user.id,
-      full_name: fullName.trim(),
-      email: email.trim() || null,
-      phone: phone.trim() || null,
-      relationship: relationship || null,
-    });
-    setLoading(false);
-    if (error) {
-      Alert.alert('Error', error.message);
+    if (!user?.email) {
+      Alert.alert('Error', 'User email not found. Please log in again.');
       return;
     }
-    Alert.alert('Saved', 'Recipient added successfully.', [
-      { text: 'OK', onPress: () => router.back() },
-    ]);
+    setLoading(true);
+    try {
+      const result = await backendApi.addRecipient({
+        user_email: user.email,
+        full_name: fullName.trim(),
+        email: email.trim() || undefined,
+        phone: phone.trim() || undefined,
+        relationship: relationship || undefined,
+      });
+      
+      if (!result.success) {
+        Alert.alert('Error', result.message || 'Failed to add recipient');
+        return;
+      }
+      
+      Alert.alert('Saved', 'Recipient added successfully. Email notification sent if email provided.', [
+        { text: 'OK', onPress: () => router.back() },
+      ]);
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to add recipient');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (

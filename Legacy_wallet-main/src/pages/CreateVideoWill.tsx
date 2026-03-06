@@ -178,47 +178,27 @@ const CreateVideoWill = () => {
 
     setIsSaving(true);
     try {
-      // Upload video to storage
-      const fileName = `${user.id}/video-will-${Date.now()}.webm`;
-      const { error: uploadError } = await supabase.storage
-        .from("asset-documents")
-        .upload(fileName, recordedBlob, {
-          contentType: "video/webm",
-          upsert: false,
-        });
-
-      if (uploadError) throw uploadError;
-
-      // Create or update will record
-      const { data: existingWill } = await supabase
-        .from("wills")
-        .select("id")
-        .eq("user_id", user.id)
-        .eq("type", "video")
-        .maybeSingle();
-
-      if (existingWill) {
-        const { error } = await supabase
-          .from("wills")
-          .update({
-            video_url: fileName,
-            status: "in_progress",
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", existingWill.id);
-        if (error) throw error;
-      } else {
-        const { error } = await supabase.from("wills").insert({
-          user_id: user.id,
-          type: "video",
-          video_url: fileName,
-          title: "My Video Will",
-          status: "in_progress",
-        });
-        if (error) throw error;
+      // Upload video to Cloudflare R2 storage
+      if (!user?.email) {
+        throw new Error("User email is required. Please log in again.");
       }
 
-      toast.success("Video saved successfully");
+      console.log("Uploading video to Cloudflare R2...", { userEmail: user.email, blobSize: recordedBlob.size });
+      
+      const { backendApi } = await import("@/lib/backendApi");
+      const uploadResult = await backendApi.uploadVideo({
+        user_email: user.email,
+        videoFile: recordedBlob,
+        staging: true // Use staging bucket in development
+      });
+
+      if (!uploadResult.success) {
+        throw new Error(uploadResult.message || "Failed to upload video to R2");
+      }
+
+      console.log("Upload successful to R2:", uploadResult.data?.upload?.url);
+
+      toast.success("Video saved successfully to Cloudflare R2");
       navigate("/assets?flow=true");
     } catch (error) {
       console.error("Error saving video:", error);

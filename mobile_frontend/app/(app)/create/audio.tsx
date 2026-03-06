@@ -118,40 +118,21 @@ export default function CreateAudioWillScreen() {
       chunksRef.current = [];
       setHasRecording(true);
 
+      // Upload audio to Cloudflare R2 storage
       const arrayBuffer = await blob.arrayBuffer();
-      const fileName = `${user.id}/audio-will-${Date.now()}.webm`;
-      const { error: uploadError } = await supabase.storage
-        .from('asset-documents')
-        .upload(fileName, arrayBuffer, { contentType: 'audio/webm', upsert: false });
-      if (uploadError) throw uploadError;
+      const { backendApi } = await import('@/lib/backendApi');
+      
+      const uploadResult = await backendApi.uploadAudio({
+        user_email: user.email,
+        audioFile: arrayBuffer,
+        staging: true // Use staging bucket in development
+      });
 
-      const { data: existing } = await supabase
-        .from('wills')
-        .select('id')
-        .eq('user_id', user.id)
-        .eq('status', 'draft')
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (existing?.id) {
-        await supabase
-          .from('wills')
-          .update({
-            audio_url: fileName,
-            type: 'audio',
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', existing.id);
-      } else {
-        await supabase.from('wills').insert({
-          user_id: user.id,
-          audio_url: fileName,
-          type: 'audio',
-          title: 'My Audio Will',
-          status: 'draft',
-        });
+      if (!uploadResult.success) {
+        throw new Error(uploadResult.message || 'Failed to upload audio to R2');
       }
+
+      console.log('Audio uploaded to R2:', uploadResult.data?.upload?.url);
       setIsSaved(true);
     } catch (e) {
       console.error(e);

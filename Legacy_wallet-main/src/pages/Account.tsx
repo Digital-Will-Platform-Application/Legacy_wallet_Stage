@@ -8,7 +8,8 @@ import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
-import { User, Mail, Calendar, Lock, LogOut, Camera, Loader2, ArrowLeft, Phone } from "lucide-react";
+import { User, Mail, Calendar, Lock, LogOut, Camera, Loader2, ArrowLeft, Phone, Send } from "lucide-react";
+import { backendApi } from "@/lib/backendApi";
 interface ProfileData {
   full_name: string | null;
   avatar_url: string | null;
@@ -27,6 +28,7 @@ const Account = () => {
   const [phoneInput, setPhoneInput] = useState("");
   const [uploading, setUploading] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [sendingVerification, setSendingVerification] = useState(false);
 
   const existingPhone = (user?.user_metadata?.phone as string) || null;
 
@@ -62,13 +64,63 @@ const Account = () => {
 
   const ensureProfile = async () => {
     if (!user?.id) return;
-    const { data } = await supabase.from("profiles").select("id").eq("user_id", user.id).maybeSingle();
-    if (data) return;
-    await supabase.from("profiles").insert({
-      user_id: user.id,
-      full_name: (user?.user_metadata?.full_name ?? name) || null,
-      avatar_url: profile?.avatar_url ?? null,
-    });
+    try {
+      // Verify we have a valid session
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        console.warn("No active session for profile operations");
+        return;
+      }
+
+      const { data, error: fetchError } = await supabase
+        .from("profiles")
+        .select("id, full_name, avatar_url")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      
+      if (fetchError) {
+        console.error("Error fetching profile:", fetchError);
+        // If RLS error or profile doesn't exist, try to create using upsert
+        if (fetchError.message?.includes("row-level security") || fetchError.code === "PGRST301" || !data) {
+          const { error: upsertError } = await supabase
+            .from("profiles")
+            .upsert({
+              user_id: user.id,
+              full_name: (user?.user_metadata?.full_name ?? name) || null,
+              avatar_url: profile?.avatar_url ?? null,
+            }, {
+              onConflict: 'user_id'
+            });
+          
+          if (upsertError) {
+            console.error("Error creating profile with upsert:", upsertError);
+            // Don't throw - allow photo upload to continue
+          }
+        }
+        return;
+      }
+      
+      if (!data) {
+        // Profile doesn't exist - create it using upsert
+        const { error: upsertError } = await supabase
+          .from("profiles")
+          .upsert({
+            user_id: user.id,
+            full_name: (user?.user_metadata?.full_name ?? name) || null,
+            avatar_url: profile?.avatar_url ?? null,
+          }, {
+            onConflict: 'user_id'
+          });
+        
+        if (upsertError) {
+          console.error("Error creating profile:", upsertError);
+          // Don't throw - allow photo upload to continue
+        }
+      }
+    } catch (error) {
+      console.error("Error ensuring profile:", error);
+      // Don't throw - allow photo upload to continue
+    }
   };
 
   const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -84,20 +136,77 @@ const Account = () => {
     }
     setUploading(true);
     try {
+      // Ensure profile exists first
+      await ensureProfile();
+      
       const path = `profiles/${user.id}/avatar-${Date.now()}.${file.name.split(".").pop() || "jpg"}`;
+      
+      // Upload to storage
       const { error: upErr } = await supabase.storage
         .from("asset-documents")
         .upload(path, file, { contentType: file.type, upsert: true });
-      if (upErr) throw upErr;
-      const { data: signed } = await supabase.storage.from("asset-documents").createSignedUrl(path, 31536000);
+      
+      if (upErr) {
+        console.error("Storage upload error:", upErr);
+        throw new Error(upErr.message || "Failed to upload image to storage");
+      }
+      
+      // Get public URL or signed URL
+      const { data: signed, error: urlErr } = await supabase.storage
+        .from("asset-documents")
+        .createSignedUrl(path, 31536000);
+      
+      if (urlErr) {
+        console.error("URL creation error:", urlErr);
+        throw new Error(urlErr.message || "Failed to create image URL");
+      }
+      
       const url = signed?.signedUrl ?? null;
-      if (!url) throw new Error("No URL");
-      await ensureProfile();
-      await supabase.from("profiles").update({ avatar_url: url, updated_at: new Date().toISOString() }).eq("user_id", user.id);
+      if (!url) {
+        throw new Error("Failed to get image URL");
+      }
+      
+      // Update profile - use UPDATE instead of UPSERT to avoid RLS issues
+      // First check if profile exists, if not, it will be created by trigger
+      const { error: updateErr } = await supabase
+        .from("profiles")
+        .update({ 
+          avatar_url: url, 
+          updated_at: new Date().toISOString() 
+        })
+        .eq("user_id", user.id);
+      
+      // If update fails (profile doesn't exist), try upsert
+      if (updateErr) {
+        if (updateErr.message?.includes("0 rows") || updateErr.code === "PGRST116") {
+          // Profile doesn't exist - wait a moment for trigger, then try update again
+          await new Promise(resolve => setTimeout(resolve, 500));
+          const { error: retryErr } = await supabase
+            .from("profiles")
+            .update({ 
+              avatar_url: url, 
+              updated_at: new Date().toISOString() 
+            })
+            .eq("user_id", user.id);
+          
+          if (retryErr && !retryErr.message?.includes("row-level security")) {
+            throw new Error(retryErr.message || "Failed to update profile");
+          }
+        } else if (updateErr.message?.includes("row-level security") || updateErr.code === "PGRST301") {
+          // RLS error - profile exists but can't update
+          // This shouldn't happen if user is authenticated, but handle gracefully
+          console.warn("RLS policy issue - profile update may have succeeded via trigger");
+          // Don't throw - photo is uploaded, profile will sync
+        } else {
+          throw new Error(updateErr.message || "Failed to update profile");
+        }
+      }
+      
       setProfile((p) => (p ? { ...p, avatar_url: url } : null));
-      toast.success("Photo updated.");
-    } catch {
-      toast.error("Failed to update photo.");
+      toast.success("Photo updated successfully.");
+    } catch (error: any) {
+      console.error("Error updating photo:", error);
+      toast.error(error.message || "Failed to update photo. Please try again.");
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -245,10 +354,60 @@ const Account = () => {
                 <CardContent className="space-y-3">
                   <div>
                     <label className="text-sm font-medium text-muted-foreground">{t("account.email") || "Email"}</label>
-                    <p className="mt-1 flex items-center gap-2 rounded-md border bg-muted/40 px-3 py-2 text-sm">
-                      <Mail className="w-4 h-4 text-muted-foreground shrink-0" />
-                      {user?.email}
-                    </p>
+                    <div className="mt-1 flex items-center gap-2">
+                      <p className="flex-1 flex items-center gap-2 rounded-md border bg-muted/40 px-3 py-2 text-sm">
+                        <Mail className="w-4 h-4 text-muted-foreground shrink-0" />
+                        {user?.email}
+                      </p>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={async () => {
+                          if (!user?.email) {
+                            toast.error("Email not found");
+                            return;
+                          }
+                          setSendingVerification(true);
+                          try {
+                            console.log("📧 Account: Sending verification email to:", user.email);
+                            const result = await backendApi.sendVerificationEmail({
+                              user_email: user.email
+                            });
+                            console.log("📧 Account: Result:", result);
+                            
+                            if (result && result.success) {
+                              console.log("✅ Account: Verification email sent successfully");
+                              toast.success("Verification email sent! Please check your inbox.");
+                            } else {
+                              const errorMsg = result?.message || result?.error || "Failed to send verification email";
+                              console.error("❌ Account: Failed to send:", errorMsg);
+                              toast.error(errorMsg);
+                            }
+                          } catch (error: any) {
+                            console.error("❌ Account: Exception sending verification email:", error);
+                            const errorMsg = error?.message || error?.toString() || "Failed to send verification email. Please try again.";
+                            console.error("❌ Account: Error message:", errorMsg);
+                            toast.error(errorMsg);
+                          } finally {
+                            setSendingVerification(false);
+                          }
+                        }}
+                        disabled={sendingVerification || !user?.email}
+                      >
+                        {sendingVerification ? (
+                          <>
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            Sending...
+                          </>
+                        ) : (
+                          <>
+                            <Send className="h-4 w-4 mr-2" />
+                            Send Verification
+                          </>
+                        )}
+                      </Button>
+                    </div>
                   </div>
                   {existingPhone ? (
                     <div>

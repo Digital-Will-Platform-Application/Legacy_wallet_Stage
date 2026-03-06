@@ -125,44 +125,25 @@ export default function CreateAudioWillScreen() {
       if (!uri) throw new Error('No recording URI');
       setHasRecording(true);
 
+      // Read audio file and upload to Cloudflare R2 storage
       const b64 = await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
       const binary = atob(b64);
       const bytes = new Uint8Array(binary.length);
       for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
 
-      const fileName = `${user.id}/audio-will-${Date.now()}.m4a`;
-      const { error: uploadError } = await supabase.storage
-        .from('asset-documents')
-        .upload(fileName, bytes.buffer, { contentType: 'audio/m4a', upsert: false });
-      if (uploadError) throw uploadError;
+      const { backendApi } = await import('@/lib/backendApi');
+      
+      const uploadResult = await backendApi.uploadAudio({
+        user_email: user.email,
+        audioFile: bytes.buffer,
+        staging: true // Use staging bucket in development
+      });
 
-      const { data: existing } = await supabase
-        .from('wills')
-        .select('id')
-        .eq('user_id', user.id)
-        .eq('status', 'draft')
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (existing?.id) {
-        await supabase
-          .from('wills')
-          .update({
-            audio_url: fileName,
-            type: 'audio',
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', existing.id);
-      } else {
-        await supabase.from('wills').insert({
-          user_id: user.id,
-          audio_url: fileName,
-          type: 'audio',
-          title: 'My Audio Will',
-          status: 'draft',
-        });
+      if (!uploadResult.success) {
+        throw new Error(uploadResult.message || 'Failed to upload audio to R2');
       }
+
+      console.log('Audio uploaded to R2:', uploadResult.data?.upload?.url);
       setIsSaved(true);
     } catch (e) {
       console.error(e);

@@ -260,41 +260,63 @@ const Login = () => {
         }
       } else {
         const { error } = await signUp(email, password, fullName, mobile || undefined);
+        
+        // Always check for error first - if error exists, show error and return early
         if (error) {
-          if (error.message.includes("User already registered")) {
+          // Check for various error messages that indicate email already exists
+          const errorMsg = (error.message || String(error) || '').toLowerCase();
+          if (errorMsg.includes("already registered") || 
+              errorMsg.includes("already exists") || 
+              errorMsg.includes("user already registered") ||
+              errorMsg.includes("email already") ||
+              errorMsg.includes("duplicate") ||
+              errorMsg.includes("unique constraint")) {
             toast.error(t("login.emailExists"));
+            setLoading(false);
+            return;
           } else {
-            toast.error(error.message);
+            toast.error(error.message || String(error) || t("login.unexpectedError"));
+            setLoading(false);
+            return;
           }
-        } else {
-          // Save step 2 fields to user metadata (placeholder for backend)
-          const metadata: Record<string, unknown> = {
-            onboarding_completed: false,
-            address1: address1 || undefined,
-            address2: address2 || undefined,
-            age: age || undefined,
-            state: state || undefined,
-            postal_code: postalCode || undefined,
-            gender: gender || undefined,
-          };
-          await supabase.auth.updateUser({ data: metadata });
-          toast.success(t("login.accountCreated"));
-          const signupEmail = email.trim().toLowerCase();
-          const envAdminEmail = (import.meta.env.VITE_ADMIN_EMAIL as string | undefined)?.trim().toLowerCase();
-          let isAdminUser = envAdminEmail && signupEmail === envAdminEmail;
-          if (!isAdminUser) {
-            let adminList: { email?: string }[] | null = null;
-            try {
-              const res = await supabase.from("admin_emails").select("email");
-              adminList = res.data;
-            } catch {
-              adminList = null;
-            }
-            isAdminUser = adminList?.some((r) => (r.email ?? "").trim().toLowerCase() === signupEmail) ?? false;
-          }
-          // First-time users: go to asset selection (onboarding) before dashboard; admins go to admin
-          navigate(isAdminUser ? "/admin" : "/onboarding");
         }
+        
+        // Only proceed if there's NO error
+        // Verify user was actually created by checking current session
+        const { data: { user: currentUser } } = await supabase.auth.getUser();
+        if (!currentUser) {
+          toast.error(t("login.unexpectedError"));
+          setLoading(false);
+          return;
+        }
+        
+        // Save step 2 fields to user metadata (placeholder for backend)
+        const metadata: Record<string, unknown> = {
+          onboarding_completed: false,
+          address1: address1 || undefined,
+          address2: address2 || undefined,
+          age: age || undefined,
+          state: state || undefined,
+          postal_code: postalCode || undefined,
+          gender: gender || undefined,
+        };
+        await supabase.auth.updateUser({ data: metadata });
+        toast.success(t("login.accountCreated"));
+        const signupEmail = email.trim().toLowerCase();
+        const envAdminEmail = (import.meta.env.VITE_ADMIN_EMAIL as string | undefined)?.trim().toLowerCase();
+        let isAdminUser = envAdminEmail && signupEmail === envAdminEmail;
+        if (!isAdminUser) {
+          let adminList: { email?: string }[] | null = null;
+          try {
+            const res = await supabase.from("admin_emails").select("email");
+            adminList = res.data;
+          } catch {
+            adminList = null;
+          }
+          isAdminUser = adminList?.some((r) => (r.email ?? "").trim().toLowerCase() === signupEmail) ?? false;
+        }
+        // First-time users: go to asset selection (onboarding) before dashboard; admins go to admin
+        navigate(isAdminUser ? "/admin" : "/onboarding");
       }
     } catch (err) {
       toast.error(t("login.unexpectedError"));
