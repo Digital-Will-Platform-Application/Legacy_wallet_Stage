@@ -1,8 +1,9 @@
 export default {
   expo: {
     name: 'Digital Will',
-    slug: 'mobile_frontend',
+    slug: 'digital-will-application',
     version: '1.0.0',
+    owner: 'sivayya',
     orientation: 'portrait',
     icon: './assets/images/icon.png',
     scheme: 'legacywallet',
@@ -10,7 +11,12 @@ export default {
     newArchEnabled: true,
     splash: { image: './assets/images/splash-icon.png', resizeMode: 'contain', backgroundColor: '#FAF9F7' },
     ios: { supportsTablet: true },
-    android: { adaptiveIcon: { foregroundImage: './assets/images/adaptive-icon.png', backgroundColor: '#FAF9F7' }, edgeToEdgeEnabled: true },
+    android: { 
+      adaptiveIcon: { foregroundImage: './assets/images/adaptive-icon.png', backgroundColor: '#FAF9F7' }, 
+      edgeToEdgeEnabled: true,
+      package: 'com.digitalwill.legacywallet',
+      versionCode: 1
+    },
     web: { bundler: 'metro', output: 'static', favicon: './assets/images/favicon.png' },
     plugins: [
       'expo-router',

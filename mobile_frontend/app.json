@@ -1,7 +1,8 @@
 {
   "expo": {
-    "name": "mobile_frontend",
-    "slug": "mobile_frontend",
+    "name": "Digital Will",
+    "slug": "digital-will-application",
+    "owner": "sivayya",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
