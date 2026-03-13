@@ -11,9 +11,20 @@ Backend server for Legacy Wallet with user registration and authentication.
    ```
 
 2. **Create .env file:**
-   Copy `.env.example` to `.env` and update the values:
+   Create a `.env` file in the `backend` directory with the required environment variables.
+   See [ENV_SETUP.md](./ENV_SETUP.md) for a complete list of required and optional variables.
+   
+   **Minimum required variables:**
+   ```env
+   DATABASE_URL=postgresql://user:password@localhost:5432/legacy_wallet
+   JWT_SECRET=your-secret-key-change-this-in-production
+   PORT=3001
+   NODE_ENV=development
+   ```
+   
+   **Generate a secure JWT_SECRET:**
    ```bash
-   cp .env.example .env
+   node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
    ```
 
 3. **Initialize database:**

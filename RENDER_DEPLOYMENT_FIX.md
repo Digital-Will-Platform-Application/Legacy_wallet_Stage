@@ -39,7 +39,8 @@ When setting up services in Render:
 Set these in Render Dashboard for Backend service:
 - `DATABASE_URL` - Your PostgreSQL connection string
 - `JWT_SECRET` - Secret key for JWT tokens
-- `PORT` - Port number (default: 3001)
+- `P`
+    q`` - Port number (default: 3001)
 - `SMTP_USER` - Gmail SMTP username
 - `SMTP_PASS` - Gmail App Password
 - `R2_ACCOUNT_ID` - Cloudflare R2 Account ID

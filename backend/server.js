@@ -74,6 +74,14 @@ app.get('/api/test-db', async (req, res) => {
   }
 });
 
+// Middleware to normalize URLs (remove double slashes)
+app.use((req, res, next) => {
+  // Normalize the path by removing double slashes (except after protocol)
+  req.url = req.url.replace(/([^:]\/)\/+/g, '$1');
+  req.path = req.path.replace(/([^:]\/)\/+/g, '$1');
+  next();
+});
+
 // Request logging middleware (for debugging)
 app.use((req, res, next) => {
   console.log(`${req.method} ${req.path}`);

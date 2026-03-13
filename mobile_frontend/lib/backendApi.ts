@@ -1,5 +1,10 @@
 // Backend API client for mobile app
-const API_BASE_URL = process.env.EXPO_PUBLIC_BACKEND_URL || 'http://localhost:3001';
+// Normalize base URL to remove trailing slashes
+const getBaseUrl = () => {
+  const url = process.env.EXPO_PUBLIC_BACKEND_URL || 'http://localhost:3001';
+  return url.replace(/\/+$/, ''); // Remove trailing slashes
+};
+const API_BASE_URL = getBaseUrl();
 
 export interface AddRecipientRequest {
   user_email: string;
@@ -32,7 +37,9 @@ class BackendApi {
     options: RequestInit = {}
   ): Promise<ApiResponse<T>> {
     try {
-      const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+      // Normalize URL to prevent double slashes
+      const url = `${API_BASE_URL}${endpoint}`.replace(/([^:]\/)\/+/g, '$1');
+      const response = await fetch(url, {
         ...options,
         headers: {
           'Content-Type': 'application/json',
@@ -139,7 +146,8 @@ class BackendApi {
         formData.append('staging', 'true');
       }
 
-      const response = await fetch(`${API_BASE_URL}/api/upload/audio`, {
+      const url = `${API_BASE_URL}/api/upload/audio`.replace(/([^:]\/)\/+/g, '$1'); // Remove double slashes
+      const response = await fetch(url, {
         method: 'POST',
         body: formData,
       });
@@ -192,7 +200,8 @@ class BackendApi {
         formData.append('staging', 'true');
       }
 
-      const response = await fetch(`${API_BASE_URL}/api/upload/video`, {
+      const url = `${API_BASE_URL}/api/upload/video`.replace(/([^:]\/)\/+/g, '$1'); // Remove double slashes
+      const response = await fetch(url, {
         method: 'POST',
         body: formData,
       });

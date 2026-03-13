@@ -3,7 +3,7 @@ export default {
     name: 'Digital Will',
     slug: 'digital-will-application',
     version: '1.0.0',
-    owner: 'sivayya',
+    owner: 'kreddyking',
     orientation: 'portrait',
     icon: './assets/images/icon.png',
     scheme: 'legacywallet',
@@ -34,6 +34,9 @@ export default {
       supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL,
       supabaseAnonKey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY,
       adminEmail: process.env.EXPO_PUBLIC_ADMIN_EMAIL,
+      eas: {
+        projectId: '229b98ac-a86c-4167-be35-02164b556cda'
+      }
     },
   },
 };
