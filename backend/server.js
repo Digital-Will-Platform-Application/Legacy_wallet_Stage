@@ -12,6 +12,7 @@ import uploadRoutes from './routes/upload.js';
 import profilesRoutes from './routes/profiles.js';
 import emailVerificationRoutes from './routes/emailVerification.js';
 import testEmailRoutes from './routes/testEmail.js';
+import chatRoutes from './routes/chat.js';
 import pool from './config/database.js';
 
 dotenv.config();
@@ -76,9 +77,9 @@ app.get('/api/test-db', async (req, res) => {
 
 // Middleware to normalize URLs (remove double slashes)
 app.use((req, res, next) => {
-  // Normalize the path by removing double slashes (except after protocol)
+  // Normalize the URL by removing double slashes (except after protocol)
+  // Note: req.path is read-only, so we only modify req.url
   req.url = req.url.replace(/([^:]\/)\/+/g, '$1');
-  req.path = req.path.replace(/([^:]\/)\/+/g, '$1');
   next();
 });
 
@@ -100,6 +101,7 @@ app.use('/api/upload', uploadRoutes);
 app.use('/api/profiles', profilesRoutes);
 app.use('/api/email-verification', emailVerificationRoutes);
 app.use('/api/test-email', testEmailRoutes);
+app.use('/api/chat', chatRoutes);
 
 // Error handling middleware (must be before 404 handler)
 app.use((err, req, res, next) => {
@@ -145,9 +147,14 @@ app.listen(PORT, () => {
   console.log(`   GET /api/assets/user/:userId - Get user's assets`);
   console.log(`   POST /api/recipients/add - Add recipient`);
   console.log(`   GET /api/recipients/user/:userId - Get user's recipients`);
-  console.log(`   POST /api/upload/audio - Upload audio recording to R2`);
-  console.log(`   POST /api/upload/video - Upload video recording to R2`);
-  console.log(`   GET /api/upload/status - Check R2 configuration status`);
+      console.log(`   POST /api/upload/audio - Upload audio recording to R2`);
+      console.log(`   POST /api/upload/video - Upload video recording to R2`);
+      console.log(`   GET /api/upload/status - Check R2 configuration status`);
+      console.log(`   POST /api/chat/message - Save single chat message`);
+      console.log(`   POST /api/chat/messages - Save multiple chat messages`);
+      console.log(`   GET /api/chat/messages - Get chat messages`);
+      console.log(`   POST /api/chat/upload-audio - Upload audio for chat`);
+      console.log(`   POST /api/chat/upload-video - Upload video for chat`);
   console.log(`   POST /api/notifications/send-will-notifications - Send email notifications`);
       console.log(`   POST /api/profiles/update - Update user profile`);
       console.log(`   POST /api/email-verification/send-verification - Send verification email`);

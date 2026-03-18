@@ -166,6 +166,35 @@ router.get('/user/:userId', async (req, res) => {
   }
 });
 
+// Get assets by user email
+router.get('/user-email/:userEmail', async (req, res) => {
+  try {
+    const { userEmail } = req.params;
+    const userId = await ensureUserExists(userEmail);
+    
+    const result = await pool.query(
+      `SELECT id, user_id, name, category, estimated_value, description, currency, documents_url, created_at, updated_at
+       FROM assets 
+       WHERE user_id = $1
+       ORDER BY created_at DESC`,
+      [userId]
+    );
+
+    res.json({
+      success: true,
+      count: result.rows.length,
+      data: result.rows
+    });
+  } catch (error) {
+    console.error('Error fetching assets:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching assets',
+      error: error.message
+    });
+  }
+});
+
 // Get asset by ID
 router.get('/:id', async (req, res) => {
   try {

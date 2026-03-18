@@ -142,6 +142,43 @@ router.get('/user/:userId', async (req, res) => {
   }
 });
 
+// Get user's will by email
+router.get('/user-email/:userEmail', async (req, res) => {
+  try {
+    const { userEmail } = req.params;
+    const userId = await ensureUserExists(userEmail);
+    
+    const result = await pool.query(
+      `SELECT id, user_id, title, type, status, content, transcript, audio_url, video_url, notes, created_at, updated_at
+       FROM wills 
+       WHERE user_id = $1
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [userId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.json({
+        success: true,
+        data: null,
+        message: 'No will found'
+      });
+    }
+
+    res.json({
+      success: true,
+      data: result.rows[0]
+    });
+  } catch (error) {
+    console.error('Error fetching will:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching will',
+      error: error.message
+    });
+  }
+});
+
 // Finalize will
 router.post('/finalize', authenticateUser, async (req, res) => {
   try {

@@ -110,6 +110,10 @@ class BackendApi {
     });
   }
 
+  async getUserWill(userEmail: string): Promise<ApiResponse> {
+    return this.request(`/api/wills/user-email/${encodeURIComponent(userEmail)}`);
+  }
+
   async finalizeWill(data: {
     user_email: string;
     will_id?: number;
@@ -201,6 +205,245 @@ class BackendApi {
       }
 
       const url = `${API_BASE_URL}/api/upload/video`.replace(/([^:]\/)\/+/g, '$1'); // Remove double slashes
+      const response = await fetch(url, {
+        method: 'POST',
+        body: formData,
+      });
+
+      const result = await response.json();
+      
+      if (!response.ok) {
+        return {
+          success: false,
+          message: result.message || 'Failed to upload video',
+          error: result.error || result.message,
+        };
+      }
+
+      return {
+        success: true,
+        ...result,
+      };
+    } catch (error: any) {
+      return {
+        success: false,
+        message: 'Network error',
+        error: error.message,
+      };
+    }
+  }
+
+  // Check upload status
+  async checkUploadStatus(): Promise<ApiResponse> {
+    return this.request('/api/upload/status', {
+      method: 'GET',
+    });
+  }
+
+  // Auth endpoints
+  async register(data: {
+    username: string;
+    email: string;
+    password: string;
+    confirm_password: string;
+    mobile?: string;
+    address1?: string;
+    address2?: string;
+    age?: number;
+    gender?: string;
+    state?: string;
+    postal_code?: string;
+  }): Promise<ApiResponse> {
+    return this.request('/api/auth/register', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async login(data: {
+    email: string;
+    password: string;
+  }): Promise<ApiResponse> {
+    return this.request('/api/auth/login', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  // Recipients - update and delete
+  async updateRecipient(recipientId: number, data: {
+    user_email: string;
+    full_name?: string;
+    email?: string;
+    phone?: string;
+    relationship?: string;
+    address?: string;
+  }): Promise<ApiResponse> {
+    return this.request(`/api/recipients/${recipientId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteRecipient(recipientId: number, data: { user_email: string }): Promise<ApiResponse> {
+    return this.request(`/api/recipients/${recipientId}`, {
+      method: 'DELETE',
+      body: JSON.stringify(data),
+    });
+  }
+
+  // Email verification
+  async sendVerificationEmail(data: { user_email: string; user_id?: number }): Promise<ApiResponse> {
+    return this.request('/api/email-verification/send-verification', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async verifyEmail(token: string): Promise<ApiResponse> {
+    return this.request(`/api/email-verification/verify?token=${encodeURIComponent(token)}`, {
+      method: 'GET',
+    });
+  }
+
+  async checkVerificationStatus(userId: number): Promise<ApiResponse> {
+    return this.request(`/api/email-verification/status/${userId}`, {
+      method: 'GET',
+    });
+  }
+
+  // Chat endpoints
+  async saveChatMessage(data: {
+    user_email?: string;
+    user_id?: number;
+    role: 'user' | 'assistant';
+    content: string;
+    will_id?: number;
+    audio_url?: string;
+    video_url?: string;
+  }): Promise<ApiResponse> {
+    return this.request('/api/chat/message', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async saveChatMessages(data: {
+    user_email?: string;
+    user_id?: number;
+    messages: Array<{
+      role: 'user' | 'assistant';
+      content: string;
+      audio_url?: string;
+      video_url?: string;
+    }>;
+    will_id?: number;
+  }): Promise<ApiResponse> {
+    return this.request('/api/chat/messages', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async getChatMessages(data: {
+    user_email?: string;
+    user_id?: number;
+    will_id?: number;
+  }): Promise<ApiResponse> {
+    const params = new URLSearchParams();
+    if (data.user_email) params.append('user_email', data.user_email);
+    if (data.user_id) params.append('user_id', data.user_id.toString());
+    if (data.will_id) params.append('will_id', data.will_id.toString());
+
+    return this.request(`/api/chat/messages?${params.toString()}`, {
+      method: 'GET',
+    });
+  }
+
+  async uploadChatAudio(data: {
+    user_email: string;
+    audioFile: Blob | ArrayBuffer | Uint8Array;
+    will_id?: number;
+    staging?: boolean;
+  }): Promise<ApiResponse> {
+    try {
+      const formData = new FormData();
+      
+      let blob: Blob;
+      if (data.audioFile instanceof Blob) {
+        blob = data.audioFile;
+      } else if (data.audioFile instanceof ArrayBuffer) {
+        blob = new Blob([data.audioFile], { type: 'audio/webm' });
+      } else {
+        blob = new Blob([data.audioFile], { type: 'audio/webm' });
+      }
+      
+      formData.append('audio', blob as any, 'audio-will.webm');
+      formData.append('user_email', data.user_email);
+      if (data.will_id) {
+        formData.append('will_id', data.will_id.toString());
+      }
+      if (data.staging) {
+        formData.append('staging', 'true');
+      }
+
+      const url = `${API_BASE_URL}/api/chat/upload-audio`.replace(/([^:]\/)\/+/g, '$1');
+      const response = await fetch(url, {
+        method: 'POST',
+        body: formData,
+      });
+
+      const result = await response.json();
+      
+      if (!response.ok) {
+        return {
+          success: false,
+          message: result.message || 'Failed to upload audio',
+          error: result.error || result.message,
+        };
+      }
+
+      return {
+        success: true,
+        ...result,
+      };
+    } catch (error: any) {
+      return {
+        success: false,
+        message: 'Network error',
+        error: error.message,
+      };
+    }
+  }
+
+  async uploadChatVideo(data: {
+    user_email: string;
+    videoFile: Blob | ArrayBuffer | Uint8Array;
+    will_id?: number;
+    staging?: boolean;
+  }): Promise<ApiResponse> {
+    try {
+      const formData = new FormData();
+      
+      let blob: Blob;
+      if (data.videoFile instanceof Blob) {
+        blob = data.videoFile;
+      } else if (data.videoFile instanceof ArrayBuffer) {
+        blob = new Blob([data.videoFile], { type: 'video/webm' });
+      } else {
+        blob = new Blob([data.videoFile], { type: 'video/webm' });
+      }
+      
+      formData.append('video', blob as any, 'video-will.webm');
+      formData.append('user_email', data.user_email);
+      if (data.will_id) {
+        formData.append('will_id', data.will_id.toString());
+      }
+      if (data.staging) {
+        formData.append('staging', 'true');
+      }
+
+      const url = `${API_BASE_URL}/api/chat/upload-video`.replace(/([^:]\/)\/+/g, '$1');
       const response = await fetch(url, {
         method: 'POST',
         body: formData,

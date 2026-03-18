@@ -113,9 +113,11 @@ export default function CreateChatWillScreen() {
     setHasStarted(true);
     setIsLoading(true);
     try {
+      let assistantMessageContent = '';
       await streamChat({
         messages: [],
         onDelta: (chunk) => {
+          assistantMessageContent += chunk;
           setMessages((prev) => {
             const last = prev[prev.length - 1];
             if (last?.role === 'assistant') {
@@ -126,7 +128,23 @@ export default function CreateChatWillScreen() {
             return [...prev, { role: 'assistant', content: chunk }];
           });
         },
-        onDone: () => setIsLoading(false),
+        onDone: async () => {
+          setIsLoading(false);
+          // Save initial assistant message to database
+          if (user?.email && assistantMessageContent) {
+            try {
+              const { backendApi } = await import('@/lib/backendApi');
+              await backendApi.saveChatMessage({
+                user_email: user.email,
+                role: 'assistant',
+                content: assistantMessageContent,
+              });
+            } catch (dbError) {
+              console.error('Error saving assistant message to database:', dbError);
+              // Continue even if database save fails
+            }
+          }
+        },
       });
     } catch (e) {
       console.error(e);
@@ -144,9 +162,26 @@ export default function CreateChatWillScreen() {
     setInput('');
     setIsLoading(true);
     try {
+      // Save user message to database
+      if (user?.email) {
+        try {
+          const { backendApi } = await import('@/lib/backendApi');
+          await backendApi.saveChatMessage({
+            user_email: user.email,
+            role: 'user',
+            content: validation.sanitized,
+          });
+        } catch (dbError) {
+          console.error('Error saving user message to database:', dbError);
+          // Continue even if database save fails
+        }
+      }
+
+      let assistantMessageContent = '';
       await streamChat({
         messages: updated,
         onDelta: (chunk) => {
+          assistantMessageContent += chunk;
           setMessages((prev) => {
             const last = prev[prev.length - 1];
             if (last?.role === 'assistant') {
@@ -157,7 +192,23 @@ export default function CreateChatWillScreen() {
             return [...prev, { role: 'assistant', content: chunk }];
           });
         },
-        onDone: () => setIsLoading(false),
+        onDone: async () => {
+          setIsLoading(false);
+          // Save assistant message to database after streaming is complete
+          if (user?.email && assistantMessageContent) {
+            try {
+              const { backendApi } = await import('@/lib/backendApi');
+              await backendApi.saveChatMessage({
+                user_email: user.email,
+                role: 'assistant',
+                content: assistantMessageContent,
+              });
+            } catch (dbError) {
+              console.error('Error saving assistant message to database:', dbError);
+              // Continue even if database save fails
+            }
+          }
+        },
       });
     } catch (e) {
       console.error(e);
@@ -175,6 +226,35 @@ export default function CreateChatWillScreen() {
           return `${m.role === 'user' ? 'User' : 'Assistant'}: ${content}`;
         })
         .join('\n\n');
+      
+      // Save to backend database
+      const { backendApi } = await import('@/lib/backendApi');
+      const result = await backendApi.saveWill({
+        user_email: user.email,
+        transcript,
+        content: transcript,
+        title: 'My Chat-Based Will',
+        type: 'chat',
+      });
+
+      if (result.success && result.data?.id) {
+        // Save all messages to chat_messages table
+        try {
+          await backendApi.saveChatMessages({
+            user_email: user.email,
+            messages: messages.map((m) => ({
+              role: m.role,
+              content: m.role === 'user' ? sanitizeInput(m.content) : m.content,
+            })),
+            will_id: result.data.id,
+          });
+        } catch (chatError) {
+          console.error('Error saving chat messages:', chatError);
+          // Continue even if chat messages save fails
+        }
+      }
+
+      // Also save to Supabase for compatibility
       const { data: existing } = await supabase
         .from('wills')
         .select('id')

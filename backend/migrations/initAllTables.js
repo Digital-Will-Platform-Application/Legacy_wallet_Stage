@@ -14,7 +14,8 @@ async function initAllTables() {
           '003_create_assets_table.sql',
           '004_create_email_notifications_table.sql',
           '005_create_recipients_table.sql',
-          '006_create_email_verifications_table.sql'
+          '006_create_email_verifications_table.sql',
+          '007_create_chat_messages_table.sql'
         ];
 
     for (const migration of migrations) {

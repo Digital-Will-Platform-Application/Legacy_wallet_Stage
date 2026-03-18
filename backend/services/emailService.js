@@ -109,11 +109,18 @@ async function sendEmailViaSMTP(to, subject, html) {
 
 // Send email using Resend API (fallback)
 export async function sendEmailViaResend(to, subject, html) {
-  if (!RESEND_API_KEY) {
-    return { success: false, error: 'Resend API key not configured' };
+  // Check if API key is set and not a placeholder
+  if (!RESEND_API_KEY || RESEND_API_KEY === 're_your_api_key_here' || RESEND_API_KEY === 're_your_resend_api_key_here') {
+    const errorMsg = 'Resend API key not configured. Please set RESEND_API_KEY in .env with your actual Resend API key from resend.com';
+    console.error('❌', errorMsg);
+    return { success: false, error: errorMsg };
   }
 
   try {
+    console.log('📧 Sending email via Resend API to:', to);
+    console.log('📧 From:', EMAIL_FROM);
+    console.log('📧 Subject:', subject);
+    
     const response = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: {
@@ -128,64 +135,91 @@ export async function sendEmailViaResend(to, subject, html) {
       }),
     });
 
+    const responseText = await response.text();
+    console.log('📧 Resend API response status:', response.status);
+    console.log('📧 Resend API response:', responseText);
+
     if (!response.ok) {
-      const errorText = await response.text();
-      let errorMessage = errorText;
+      let errorMessage = responseText;
       try {
-        const errorJson = JSON.parse(errorText);
-        errorMessage = errorJson.message || errorText;
+        const errorJson = JSON.parse(responseText);
+        errorMessage = errorJson.message || errorJson.error || responseText;
       } catch {
         // If not JSON, use the text as-is
       }
-      console.error('Resend API error:', response.status, errorMessage);
+      console.error('❌ Resend API error:', response.status, errorMessage);
+      
+      // Provide helpful error messages
+      if (response.status === 401 || response.status === 403) {
+        errorMessage = 'Invalid Resend API key. Please check your RESEND_API_KEY in .env';
+      } else if (response.status === 422) {
+        errorMessage = `Invalid email configuration: ${errorMessage}`;
+      }
+      
       return { success: false, error: errorMessage };
     }
 
-    const result = await response.json();
-    console.log('✅ Email sent successfully via Resend:', result.id);
+    const result = JSON.parse(responseText);
+    console.log('✅ Email sent successfully via Resend');
+    console.log('📧 Message ID:', result.id);
     return { success: true, messageId: result.id };
   } catch (error) {
-    console.error('Error sending email via Resend:', error);
-    return { success: false, error: error.message };
+    console.error('❌ Error sending email via Resend:', error);
+    console.error('❌ Error details:', error.message, error.stack);
+    return { success: false, error: `Resend API error: ${error.message}` };
   }
 }
 
 // Main email sending function - tries SMTP first, then Resend
 export async function sendEmail(to, subject, html) {
+  console.log(`📧 ========================================`);
   console.log(`📧 Attempting to send email to: ${to}`);
-  console.log(`📧 SMTP configured: ${transporter ? 'Yes' : 'No'}`);
-  console.log(`📧 Resend configured: ${RESEND_API_KEY ? 'Yes' : 'No'}`);
+  console.log(`📧 SMTP configured: ${transporter ? 'Yes ✅' : 'No ❌'}`);
+  const resendConfigured = RESEND_API_KEY && RESEND_API_KEY !== 're_your_api_key_here' && RESEND_API_KEY !== 're_your_resend_api_key_here';
+  console.log(`📧 Resend configured: ${resendConfigured ? 'Yes ✅' : 'No ❌'}`);
+  console.log(`📧 ========================================`);
   
   // Try SMTP first if configured
   if (transporter) {
-    console.log('📧 Trying SMTP first...');
-    const smtpResult = await sendEmailViaSMTP(to, subject, html);
-    if (smtpResult.success) {
-      console.log('✅ Email sent successfully via SMTP');
-      return smtpResult;
+    console.log('📧 [1/2] Trying SMTP first...');
+    try {
+      const smtpResult = await sendEmailViaSMTP(to, subject, html);
+      if (smtpResult.success) {
+        console.log('✅ Email sent successfully via SMTP');
+        return smtpResult;
+      }
+      console.warn('⚠️ SMTP failed:', smtpResult.error);
+      console.warn('📧 [2/2] Trying Resend as fallback...');
+    } catch (smtpError) {
+      console.error('❌ SMTP exception:', smtpError.message);
+      console.warn('📧 [2/2] Trying Resend as fallback...');
     }
-    console.warn('⚠️ SMTP failed:', smtpResult.error);
-    console.warn('📧 Trying Resend as fallback...');
   } else {
     console.warn('⚠️ SMTP transporter not available. Check SMTP_USER and SMTP_PASS in .env');
   }
 
   // Fallback to Resend if SMTP fails or not configured
-  if (RESEND_API_KEY) {
-    console.log('📧 Trying Resend API...');
-    const resendResult = await sendEmailViaResend(to, subject, html);
-    if (resendResult.success) {
-      console.log('✅ Email sent successfully via Resend');
-      return resendResult;
+  if (resendConfigured) {
+    console.log('📧 [2/2] Trying Resend API...');
+    try {
+      const resendResult = await sendEmailViaResend(to, subject, html);
+      if (resendResult.success) {
+        console.log('✅ Email sent successfully via Resend');
+        return resendResult;
+      }
+      console.error('❌ Resend failed:', resendResult.error);
+    } catch (resendError) {
+      console.error('❌ Resend exception:', resendError.message);
     }
-    console.error('❌ Resend also failed:', resendResult.error);
   } else {
-    console.warn('⚠️ Resend API key not configured');
+    console.warn('⚠️ Resend API key not configured or is placeholder');
+    console.warn('💡 Get your API key from https://resend.com and set RESEND_API_KEY in .env');
   }
 
   // If neither is configured, return error
-  const errorMsg = 'No email service configured or both failed. Please check SMTP_USER/SMTP_PASS or RESEND_API_KEY in .env';
+  const errorMsg = 'No email service configured or both failed. Please configure SMTP_USER/SMTP_PASS or set a valid RESEND_API_KEY in .env';
   console.error('❌', errorMsg);
+  console.error('❌ Email sending failed - check configuration above');
   return { success: false, error: errorMsg };
 }
 

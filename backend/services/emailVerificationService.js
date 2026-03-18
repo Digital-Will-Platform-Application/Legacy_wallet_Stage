@@ -3,7 +3,8 @@ import pool from '../config/database.js';
 import { sendEmail } from './emailService.js';
 
 const EMAIL_FROM = process.env.EMAIL_FROM || 'LegacyWallet <noreply@legacywallet.com>';
-const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
+// Support multiple frontend URLs - check for web frontend first, then mobile
+const FRONTEND_URL = process.env.FRONTEND_URL || process.env.VITE_FRONTEND_URL || 'http://localhost:5173';
 
 // Generate verification token
 export function generateVerificationToken() {
@@ -43,6 +44,7 @@ export async function createVerificationToken(userId, email) {
 export async function sendVerificationEmail(userId, email, userName = null) {
   try {
     console.log(`📧 sendVerificationEmail called for userId: ${userId}, email: ${email}`);
+    console.log(`📧 FRONTEND_URL: ${FRONTEND_URL}`);
     
     // Validate inputs
     if (!userId || !email) {
@@ -51,10 +53,27 @@ export async function sendVerificationEmail(userId, email, userName = null) {
       return { success: false, error };
     }
 
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      const error = 'Invalid email format';
+      console.error(`❌ ${error}: ${email}`);
+      return { success: false, error };
+    }
+
     // Create verification token
     console.log('📧 Creating verification token...');
-    const verification = await createVerificationToken(userId, email);
-    console.log(`✅ Verification token created: ${verification.token.substring(0, 8)}...`);
+    let verification;
+    try {
+      verification = await createVerificationToken(userId, email);
+      console.log(`✅ Verification token created: ${verification.token.substring(0, 8)}...`);
+    } catch (tokenError) {
+      console.error('❌ Error creating verification token:', tokenError);
+      return { 
+        success: false, 
+        error: `Failed to create verification token: ${tokenError.message}` 
+      };
+    }
     
     const verificationUrl = `${FRONTEND_URL}/verify-email?token=${verification.token}`;
     console.log(`📧 Verification URL: ${verificationUrl}`);
@@ -111,29 +130,48 @@ export async function sendVerificationEmail(userId, email, userName = null) {
 
     // Send email via SMTP (or Resend as fallback)
     console.log(`📧 Attempting to send verification email to: ${email}`);
-    const emailResult = await sendEmail(
-      email,
-      'Verify Your Email Address - LegacyWallet',
-      emailHtml
-    );
+    console.log(`📧 Email service configured: Checking SMTP and Resend...`);
+    
+    let emailResult;
+    try {
+      emailResult = await sendEmail(
+        email,
+        'Verify Your Email Address - LegacyWallet',
+        emailHtml
+      );
+    } catch (emailError) {
+      console.error('❌ Exception while sending email:', emailError);
+      console.error('❌ Error stack:', emailError.stack);
+      return {
+        success: false,
+        error: `Email sending failed: ${emailError.message}`
+      };
+    }
 
     console.log(`📧 Email send result:`, emailResult);
 
     if (emailResult && emailResult.success) {
       console.log(`✅ Verification email sent successfully to ${email}`);
-      console.log(`📧 Message ID: ${emailResult.messageId}`);
+      console.log(`📧 Message ID: ${emailResult.messageId || 'N/A'}`);
       return {
         success: true,
         message: 'Verification email sent successfully',
-        token: verification.token // Return token for testing (remove in production)
+        token: verification.token, // Return token for testing
+        messageId: emailResult.messageId
       };
     } else {
       const errorMsg = emailResult?.error || 'Failed to send verification email';
       console.error(`❌ Failed to send verification email to ${email}`);
       console.error(`❌ Error: ${errorMsg}`);
+      console.error(`💡 Make sure SMTP_USER, SMTP_PASS, or RESEND_API_KEY is set in .env`);
+      console.error(`💡 For Gmail, use an App Password (see GMAIL_SMTP_SETUP.md)`);
+      
+      // Still return the token so user can verify manually if needed
       return {
         success: false,
-        error: errorMsg
+        error: errorMsg,
+        token: verification.token, // Return token even on failure for manual verification
+        message: 'Email sending failed, but verification token was created. Check email configuration.'
       };
     }
   } catch (error) {
