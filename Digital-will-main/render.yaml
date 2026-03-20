@@ -1,0 +1,26 @@
+services:
+  # Backend API Service
+  - type: web
+    name: legacy-wallet-backend
+    env: node
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3001
+      # Add your environment variables in Render dashboard:
+      # DATABASE_URL, JWT_SECRET, SMTP_USER, SMTP_PASS, etc.
+
+  # Frontend Web Service
+  - type: web
+    name: legacy-wallet-frontend
+    env: static
+    rootDir: Legacy_wallet-main
+    buildCommand: npm install && npm run build
+    staticPublishPath: ./dist
+    envVars:
+      - key: NODE_ENV
+        value: production
